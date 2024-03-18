@@ -8,6 +8,11 @@ import { useParams, useRouter } from 'next/navigation';
 import React, { FormEvent, useState } from 'react';
 import { toast } from 'react-toastify';
 import { v4 as uuid } from 'uuid';
+import {
+  insertFacility,
+  uploadCampPicToCampTable,
+  uploadLayoutToCampTable,
+} from '../../../supabase';
 import styles from '../_styles/CampForm.module.css';
 import CampPicture from './CampPicture';
 import CheckInOut from './CheckInOut';
@@ -25,7 +30,6 @@ const AddForm = () => {
   const [isRightNumber, setIsRightNumber] = useState(false);
   const [check_in, handleCheck_in] = useState<string>('');
   const [check_out, handleCheck_out] = useState<string>('');
-  // const [layout, handleLayout] = useInput();
   const [facility, setFacility] = useState<Tables<'facility'>[]>([]);
   const [checkedFacility, setCheckedFacility] = useState<number[]>([]);
   const [campLayout, setCampLayout] = useState<string>('');
@@ -40,7 +44,6 @@ const AddForm = () => {
 
   const campId = uuid();
 
-  // const companyUserId = session?.user.id;
   const companyUserId = params.id;
 
   // 지역정보 구분
@@ -97,11 +100,6 @@ const AddForm = () => {
     },
   });
 
-  // if (isPending) {
-  //   document.body.style.overflow = 'hidden';
-  // } else {
-  //   document.body.style.overflow = 'unset';
-  // }
   if (isError) {
     console.log(error);
     return <div>에러 발생</div>;
@@ -120,61 +118,15 @@ const AddForm = () => {
     createCamp();
 
     // supabase에 체크된 시설정보만 등록하는 로직
-    const { data: camp_facility } = await supabase
-      .from('camp_facility')
-      .insert(
-        checkedFacility.map((item) => {
-          return { camp_id: campId, facility_id: item };
-        }),
-      )
-      .select();
+    const { data: camp_facility } = await insertFacility(
+      campId,
+      checkedFacility,
+    );
 
-    // 등록 눌렀을 시 storage에 캠핑장 배치 이미지 업로드
-    async function uploadStorageLayoutData(blob: Blob | File) {
-      // const {data:campPicData} =await supabase.storage.from("camp_pic").getPublicUrl()
-      const { data, error } = await supabase.storage
-        .from('camp_layout')
-        .upload(window.URL.createObjectURL(blob), blob);
-      return { data: data, error };
-    }
-    // 배치 이미지 table에 올리는 로직
-    async function uploadLayoutToCampTable() {
-      const blob = await fetch(campLayout).then((r) => r.blob());
-      const { data, error } = await uploadStorageLayoutData(blob);
-      const BASE_URL =
-        'https://kuxaffboxknwphgulogp.supabase.co/storage/v1/object/public/camp_layout/';
-      if (error) return null;
-      // supabase camp table의 layout에 넣는 로직
-      await supabase
-        .from('camp')
-        .update({ layout: BASE_URL + data?.path })
-        .eq('id', campId);
-    }
-
-    uploadLayoutToCampTable();
-
-    // 등록 눌렀을 시 캠핑장 이미지 업로드
-    async function uploadStorageCampPicData(blob: Blob | File) {
-      // const {data:campPicData} =await supabase.storage.from("camp_pic").getPublicUrl()
-      const { data, error } = await supabase.storage
-        .from('camp_pic')
-        .upload(window.URL.createObjectURL(blob), blob);
-      return { data: data, error };
-    }
+    uploadLayoutToCampTable(campId)(campLayout);
 
     // 여러개 사진 table에 올리는 로직
-    campPicture.forEach(async (item) => {
-      const blob = await fetch(item).then((r) => r.blob());
-      const { data, error } = await uploadStorageCampPicData(blob);
-      const BASE_URL =
-        'https://kuxaffboxknwphgulogp.supabase.co/storage/v1/object/public/camp_pic/';
-      if (error) return null;
-      // supabase table에 올리는 로직
-      await supabase
-        .from('camp_pic')
-        .insert({ camp_id: campId, photo_url: BASE_URL + data?.path })
-        .select();
-    });
+    campPicture.forEach((campPic) => uploadCampPicToCampTable(campId)(campPic));
 
     const { data: hashtagData } = await supabase
       .from('hashtag')
@@ -268,9 +220,7 @@ const AddForm = () => {
                 required
                 className={styles.requestCallInput}
               />
-              {isRightNumber ? (
-                ''
-              ) : (
+              {isRightNumber && (
                 <p className={styles.isRightNumber}>형식을 맞춰주세요</p>
               )}
             </div>
@@ -286,7 +236,6 @@ const AddForm = () => {
               setInputHashTag={setInputHashTag}
             />
             <div className={styles.btns}>
-              {/* <button type='button'>임시저장</button> */}
               <button type='submit' className={styles.addCampBtn}>
                 등록하기
               </button>
