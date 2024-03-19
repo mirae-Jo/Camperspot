@@ -1,18 +1,7 @@
 'use client';
-import { supabase } from '@/app/api/db';
 import Loading from '@/app/loading';
-import useInput from '@/hooks/useInput';
-import type { Tables } from '@/types/supabase';
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { useParams, useRouter } from 'next/navigation';
-import React, { FormEvent, useState } from 'react';
-import { toast } from 'react-toastify';
-import { v4 as uuid } from 'uuid';
-import {
-  insertFacility,
-  uploadCampPicToCampTable,
-  uploadLayoutToCampTable,
-} from '../../../supabase';
+import { useParams } from 'next/navigation';
+import useAddForm from '../../../_hooks/useAddForm';
 import styles from '../_styles/CampForm.module.css';
 import CampPicture from './CampPicture';
 import CheckInOut from './CheckInOut';
@@ -22,129 +11,46 @@ import Layout from './Layout';
 import SearchAddress from './SearchAddress';
 
 const AddForm = () => {
-  const [name, handleName] = useInput();
-  const [content, handleContent] = useInput();
-  const [address, setAddress] = useState('');
-  const [isAddressModal, setAddressModal] = useState(false);
-  const [phone, handlePhone] = useState('');
-  const [isRightNumber, setIsRightNumber] = useState(false);
-  const [check_in, handleCheck_in] = useState<string>('');
-  const [check_out, handleCheck_out] = useState<string>('');
-  const [facility, setFacility] = useState<Tables<'facility'>[]>([]);
-  const [checkedFacility, setCheckedFacility] = useState<number[]>([]);
-  const [campLayout, setCampLayout] = useState<string>('');
-  const [campPicture, setCampPicture] = useState<string[]>([]);
-  const [hashTags, setHashTags] = useState<string[]>([]);
-  const [inputHashTag, setInputHashTag] = useState('');
-
-  const router = useRouter();
   const params = useParams();
-
-  const queryClient = useQueryClient();
-
-  const campId = uuid();
 
   const companyUserId = params.id;
 
-  // 지역정보 구분
-  const regionSplit = address.split(' ');
-  const regionDoGun = regionSplit[0] + ' ' + regionSplit[1];
-
-  // 전화번호 유효성 검사
-  const checkRightNumber = (e: React.ChangeEvent<HTMLInputElement>) => {
-    handlePhone(e.target.value);
-    const pattern = /^[0-9]{2,4}-[0-9]{3,4}-[0-9]{4}$/;
-    if (pattern.test(e.target.value)) {
-      setIsRightNumber(true);
-      return handlePhone(e.target.value);
-    } else {
-      setIsRightNumber(false);
-      return;
-    }
-  };
-
-  // 쿼리문으로 작성한 camp테이블 insert
   const {
-    mutate: createCamp,
-    isPending,
+    address,
+    campLayout,
+    campPicture,
+    handlePhone,
+    check_in,
+    check_out,
+    checkedFacility,
+    facility,
+    handleCheck_in,
+    handleCheck_out,
+    handleForm,
+    handleName,
+    hashTags,
+    inputHashTag,
+    isAddressModal,
     isError,
-    error,
-  } = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await supabase
-        .from('camp')
-        .insert({
-          id: campId,
-          name,
-          content,
-          company_id: companyUserId as string,
-          address,
-          region: regionDoGun,
-          phone,
-          check_in,
-          check_out,
-          layout: campLayout,
-        })
-        .select();
-
-      if (error) {
-        throw new Error(error.message);
-      }
-      return data;
-    },
-    onSuccess: async (data) => {
-      await queryClient.invalidateQueries({ queryKey: ['camp_id'] });
-      router.push(
-        `/company/${companyUserId}/manage_camp/${data[0].id}/manage_camp_area`,
-      );
-    },
-  });
+    isPending,
+    isRightNumber,
+    name,
+    phone,
+    setAddress,
+    setAddressModal,
+    setCampLayout,
+    setCampPicture,
+    setCheckedFacility,
+    setFacility,
+    setHashTags,
+    setInputHashTag,
+    content,
+    handleContent,
+  } = useAddForm(companyUserId);
 
   if (isError) {
-    console.log(error);
     return <div>에러 발생</div>;
   }
-
-  // Form Submit
-  const handleForm = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-
-    if (campPicture.length < 5) {
-      // todo : campPicture가 없을 때 로직 처리해야함
-      toast.error('캠핑장 이미지 다섯 장 이상 등록');
-      return;
-    }
-
-    createCamp();
-
-    // supabase에 체크된 시설정보만 등록하는 로직
-    const { data: camp_facility } = await insertFacility(
-      campId,
-      checkedFacility,
-    );
-
-    uploadLayoutToCampTable(campId)(campLayout);
-
-    // 여러개 사진 table에 올리는 로직
-    campPicture.forEach((campPic) => uploadCampPicToCampTable(campId)(campPic));
-
-    const { data: hashtagData } = await supabase
-      .from('hashtag')
-      .insert(
-        hashTags.map((item) => {
-          return { camp_id: campId, tag: item };
-        }),
-      )
-      .select();
-
-    if (error) {
-      console.log(error);
-      toast.error('에러 발생');
-    } else {
-      toast.success('등록 완료!');
-      return { camp_facility, hashtagData };
-    }
-  };
 
   return (
     <>
@@ -212,7 +118,7 @@ const AddForm = () => {
               <h3>문의전화</h3>
               <input
                 value={phone}
-                onChange={checkRightNumber}
+                onChange={handlePhone}
                 type='tel'
                 placeholder='예) 02-000-0000 / 063-000-0000'
                 pattern='[0-9]{2,4}-[0-9]{3,4}-[0-9]{4}'
@@ -220,7 +126,7 @@ const AddForm = () => {
                 required
                 className={styles.requestCallInput}
               />
-              {isRightNumber && (
+              {!isRightNumber && (
                 <p className={styles.isRightNumber}>형식을 맞춰주세요</p>
               )}
             </div>
